@@ -1,0 +1,11 @@
+# Raw Yelp Open Dataset files — large, not committed to GitHub.
+# Download instructions are in README.md.
+data/raw/
+
+# R session/history files
+.Rhistory
+.RData
+.Rproj.user/
+
+# macOS
+.DS_Store
