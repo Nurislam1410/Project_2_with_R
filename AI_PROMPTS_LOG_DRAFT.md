@@ -39,3 +39,22 @@ This is a **draft** entry for `AI_PROMPTS_LOG.md`, written by the Claude Code se
 
 **Plain-language explanation of what the code does:**
 `import.R` opens the two giant JSON files Yelp publishes — one line of JSON per business, one line per review — and reads them in a streaming way instead of loading the whole file into memory at once, because the review file alone is multiple gigabytes. It immediately throws away every column except the ones actually needed later, which makes everything downstream faster and easier to reason about. `clean_filter.R` then takes that full business table (which includes every business Yelp has anywhere, of every type) and keeps only the rows that are in Louisiana, in the city of New Orleans, and have "Restaurants" somewhere in their comma-separated category list — because a business being in New Orleans doesn't mean it's a restaurant, and a restaurant having "New Orleans" as its city field doesn't guarantee it's actually a restaurant either, so both conditions are checked. It also removes exact duplicate business IDs. Finally, it saves that much smaller, filtered table to disk in a compressed R-specific format (`.rds` with `xz` compression) so that re-running later analysis doesn't require re-reading the giant raw JSON files every time — it can just load the small filtered file directly.
+
+---
+
+## Entry — Steps 3-6 analysis code (draft, for you to restate in your own words)
+
+**Date:** 2026-11-10
+**Tool:** Claude Code
+
+**What was asked:** Produce the analysis for Steps 3-6 (theme chosen by you: breakfast and coffee) so you can point the professor to a GitHub file with tables and maps. The choice and defense of the geographic system was left for you to write.
+
+**What was produced:** `steps_3_to_6.qmd` (rendered to `steps_3_to_6.md`) and the files in `figures/`.
+- Step 3: category counts and co-occurrence tables; the four categories `breakfast & brunch`, `coffee & tea`, `cafes`, `bakeries` with an "at least one" inclusion rule → 575 restaurants.
+- Step 4: reviews filtered to those restaurants before the join → 159,552 reviews.
+- Step 5: `st_join(..., st_within)` against the Census place polygon for New Orleans → 564 inside, 11 outside (Metairie, Kenner, Harahan and others), listed rather than deleted.
+- Step 6: ZCTAs, Census tracts, and Neighborhood Statistical Areas compared in one table, plus one map per system and a plot of area average stars against area size. Wards were left out because the City's ward layer metadata restricts redistribution.
+
+**Errors hit:** `tigris` was not installed and the system R library was not writable, so it was installed to the user library; per-area tables printed as code blocks until the chunk used `results: asis`.
+
+**What you should verify yourself:** the category choice and inclusion rule (would "at least two" be better?), the 11 out-of-boundary restaurants, and whether you can explain `st_within` and why tracts produce so many areas with fewer than 5 restaurants.

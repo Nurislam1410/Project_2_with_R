@@ -4,7 +4,9 @@ MATH 167R — investigating where to find the best restaurants in a selected cat
 
 ## Project status
 
-This repository currently covers only **Steps 1-2** of the assignment: importing the large raw JSON files and filtering them down to New Orleans restaurants. Steps 3 and beyond (category selection, spatial joins, reviewer normalization, visualizations, final research question and write-up) are not started yet and require design decisions only Nurislam can make.
+- **Steps 1-2** (import and New Orleans restaurant filter): `R/import.R`, `R/clean_filter.R`.
+- **Steps 3-6** (breakfast & coffee category selection, business-review join, spatial join to the official New Orleans boundary, comparison of geographic systems): **[`steps_3_to_6.md`](steps_3_to_6.md)** — tables and maps, rendered from `steps_3_to_6.qmd`.
+- Steps 7 and beyond are not started.
 
 ## Data source and download instructions
 
@@ -37,6 +39,9 @@ The raw JSON files are **not** committed to GitHub — `data/raw/` is in `.gitig
 | `R/clean_filter.R` | Step 2 — filters businesses to New Orleans restaurants (`state == "LA"`, `city == "New Orleans"`, categories containing "Restaurants"), dedupes, saves filtered business and review tables as `.rds`. |
 | `data/raw/` | Downloaded raw Yelp JSON files. Gitignored, not committed. |
 | `data/new_orleans/` | Filtered output: `business_new_orleans.rds`, `reviews_new_orleans.rds`. |
+| `steps_3_to_6.qmd` / `.md` | Steps 3-6 analysis (Quarto source and rendered GitHub version). |
+| `figures/` | Saved maps, the stars-vs-area-size plot, and `step6_geography_comparison.csv`. |
+| `data/boundaries/nsa.geojson` | New Orleans Neighborhood Statistical Areas, from data.nola.gov (dataset `exvn-jeh2`; catalog entry: <https://catalog.data.gov/dataset/neighborhood-statistical-area>). ZCTA, tract, and place boundaries are downloaded at render time with `tigris` (US Census Bureau cartographic boundary files). |
 | `AI_PROMPTS_LOG.md` | Record of AI prompts used on this project (see `AI_PROMPTS_LOG_DRAFT.md` for the entry covering this import/filter setup, pending Nurislam's review). |
 
 ## AI use

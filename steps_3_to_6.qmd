@@ -1,0 +1,336 @@
+---
+title: "Breakfast & Coffee in New Orleans — Steps 3–6"
+format:
+  gfm:
+    toc: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+This file covers Steps 3–6 of the project: choosing the restaurant categories,
+joining businesses to reviews, the spatial join to an official boundary, and the
+comparison of geographic systems. Steps 1–2 (import and New Orleans filter) are
+in [`R/import.R`](R/import.R) and [`R/clean_filter.R`](R/clean_filter.R).
+
+```{r setup}
+library(tidyverse)
+library(sf)
+library(tigris)
+options(tigris_use_cache = TRUE)
+sf_use_s2(FALSE)
+
+dir.create("figures", showWarnings = FALSE)
+
+restaurants <- readRDS("data/new_orleans/business_new_orleans.rds")
+reviews     <- readRDS("data/new_orleans/reviews_new_orleans.rds")
+```
+
+## Step 3: Select related restaurant categories
+
+### Individual categories
+
+One row per business–category pair, with capitalization and whitespace cleaned.
+`restaurants` and `food` are dropped from the counts because every business in
+this table already carries them.
+
+```{r categories}
+restaurant_categories <- restaurants |>
+  select(business_id, categories) |>
+  separate_rows(categories, sep = ",") |>
+  mutate(category = str_to_lower(str_squish(categories))) |>
+  filter(category != "") |>
+  distinct(business_id, category)
+
+category_counts <- restaurant_categories |>
+  filter(!category %in% c("restaurants", "food")) |>
+  count(category, sort = TRUE, name = "restaurants")
+
+knitr::kable(head(category_counts, 25))
+```
+
+### Categories that appear together
+
+```{r cooccurrence}
+selected_categories <- c("breakfast & brunch", "coffee & tea", "cafes", "bakeries")
+
+category_pairs <- restaurant_categories |>
+  filter(category %in% selected_categories) |>
+  inner_join(
+    restaurant_categories |> filter(category %in% selected_categories),
+    by = "business_id",
+    suffix = c("_1", "_2"),
+    relationship = "many-to-many"
+  ) |>
+  filter(category_1 < category_2) |>
+  count(category_1, category_2, sort = TRUE, name = "restaurants_with_both")
+
+knitr::kable(category_pairs)
+```
+
+```{r cooccurrence-wider}
+# Which other categories most often sit next to the selected four?
+neighbours <- restaurant_categories |>
+  semi_join(
+    restaurant_categories |> filter(category %in% selected_categories),
+    by = "business_id"
+  ) |>
+  filter(!category %in% c(selected_categories, "restaurants", "food")) |>
+  count(category, sort = TRUE, name = "restaurants")
+
+knitr::kable(head(neighbours, 10))
+```
+
+### Inclusion rule
+
+A restaurant is included if it belongs to **at least one** of the four selected
+categories.
+
+```{r inclusion}
+selected_ids <- restaurant_categories |>
+  filter(category %in% selected_categories) |>
+  distinct(business_id)
+
+breakfast_coffee <- restaurants |>
+  semi_join(selected_ids, by = "business_id")
+
+tibble(
+  qualifying_restaurants = nrow(breakfast_coffee),
+  mean_business_stars    = round(mean(breakfast_coffee$stars), 2),
+  median_review_count    = median(breakfast_coffee$review_count)
+) |> knitr::kable()
+```
+
+## Step 4: Join businesses to reviews
+
+Reviews are filtered to the selected restaurants **before** the join, so reviews
+for unrelated businesses are not carried forward.
+
+```{r join-reviews}
+breakfast_coffee_reviews <- reviews |>
+  semi_join(breakfast_coffee, by = "business_id") |>
+  left_join(
+    breakfast_coffee |> select(business_id, business_name, business_stars = stars),
+    by = "business_id"
+  )
+
+tibble(
+  reviews_kept          = nrow(breakfast_coffee_reviews),
+  restaurants_reviewed  = n_distinct(breakfast_coffee_reviews$business_id),
+  distinct_reviewers    = n_distinct(breakfast_coffee_reviews$user_id),
+  mean_review_stars     = round(mean(breakfast_coffee_reviews$stars), 2)
+) |> knitr::kable()
+
+# Per-restaurant review summary, used in Step 6
+review_summary <- breakfast_coffee_reviews |>
+  group_by(business_id) |>
+  summarise(
+    reviews_in_data   = n(),
+    mean_review_stars = mean(stars),
+    .groups = "drop"
+  )
+```
+
+## Step 5: Spatial join to official place boundaries
+
+```{r places}
+louisiana_places <- tigris::places(state = "LA", cb = TRUE, year = 2024, class = "sf")
+
+restaurant_points <- breakfast_coffee |>
+  filter(!is.na(longitude), !is.na(latitude)) |>
+  left_join(review_summary, by = "business_id") |>
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
+  st_transform(st_crs(louisiana_places))
+
+restaurants_with_place <- restaurant_points |>
+  st_join(louisiana_places |> select(GEOID, place_name = NAME),
+          join = st_within, left = TRUE)
+
+restaurants_with_place |>
+  st_drop_geometry() |>
+  count(city, place_name, sort = TRUE) |>
+  knitr::kable()
+```
+
+```{r place-mismatches}
+# Restaurants whose Yelp city is "New Orleans" but whose point is not inside
+# the official New Orleans polygon — inspected, not deleted.
+restaurants_with_place |>
+  st_drop_geometry() |>
+  filter(is.na(place_name) | place_name != "New Orleans") |>
+  select(business_name, address, postal_code, latitude, longitude, place_name) |>
+  knitr::kable()
+```
+
+```{r place-map}
+new_orleans_boundary <- louisiana_places |> filter(NAME == "New Orleans")
+
+p <- ggplot() +
+  geom_sf(data = new_orleans_boundary, fill = "grey95", color = "grey35") +
+  geom_sf(data = restaurants_with_place, aes(color = stars), alpha = 0.7, size = 1.4) +
+  scale_color_viridis_c(option = "C", limits = c(1, 5)) +
+  labs(title = "Breakfast & coffee restaurants and the official New Orleans boundary",
+       color = "Business\nstars") +
+  theme_minimal()
+ggsave("figures/step5_points_on_boundary.png", p, width = 8, height = 6, dpi = 150)
+p
+```
+
+## Step 6: Compare geographic systems
+
+Three systems are tested: ZIP Code Tabulation Areas, Census tracts, and the
+City of New Orleans Neighborhood Statistical Areas. (Wards were considered, but
+the City's ward layer metadata restricts redistribution outside its GIS
+department, so they are left out.)
+
+```{r boundaries}
+# ZCTAs: national file filtered to New Orleans-area ZIP prefixes
+zctas <- tigris::zctas(cb = TRUE, year = 2020, starts_with = c("700", "701"), class = "sf") |>
+  transmute(area_name = ZCTA5CE20)
+
+# Census tracts in Orleans Parish
+tracts <- tigris::tracts(state = "LA", county = "Orleans", cb = TRUE, year = 2024, class = "sf") |>
+  transmute(area_name = NAMELSAD)
+
+# Neighborhood Statistical Areas (data.nola.gov, dataset exvn-jeh2)
+nsa <- st_read("data/boundaries/nsa.geojson", quiet = TRUE)
+nsa_name_col <- intersect(c("gnocdc_lab", "GNOCDC_LAB", "name", "NAME", "lup_lab"), names(nsa))[1]
+nsa <- nsa |> transmute(area_name = .data[[nsa_name_col]])
+
+systems <- list(
+  "ZIP/ZCTA"                       = zctas,
+  "Census tract"                   = tracts,
+  "Neighborhood Statistical Area"  = nsa
+)
+```
+
+```{r assign}
+assign_areas <- function(boundaries, points) {
+  points |>
+    st_transform(st_crs(boundaries)) |>
+    st_join(boundaries, join = st_within, left = TRUE)
+}
+
+summarise_areas <- function(assigned) {
+  assigned |>
+    st_drop_geometry() |>
+    filter(!is.na(area_name)) |>
+    group_by(area_name) |>
+    summarise(
+      number_of_restaurants   = n(),
+      average_business_stars  = mean(stars, na.rm = TRUE),
+      median_business_stars   = median(stars, na.rm = TRUE),
+      mean_review_stars       = mean(mean_review_stars, na.rm = TRUE),
+      total_reviews           = sum(reviews_in_data, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    arrange(desc(number_of_restaurants))
+}
+
+assigned  <- map(systems, assign_areas, points = restaurant_points)
+summaries <- map(assigned, summarise_areas)
+```
+
+### Comparison table
+
+```{r comparison-table}
+comparison <- imap_dfr(summaries, \(s, system) {
+  a <- assigned[[system]]
+  tibble(
+    `Geographic system`              = system,
+    `Areas in boundary file`         = nrow(systems[[system]]),
+    `Areas with ≥1 restaurant`       = nrow(s),
+    `Restaurants assigned`           = sum(!is.na(a$area_name)),
+    `Unmatched restaurants`          = sum(is.na(a$area_name)),
+    `Smallest area count`            = min(s$number_of_restaurants),
+    `Largest area count`             = max(s$number_of_restaurants),
+    `Median area count`              = median(s$number_of_restaurants),
+    `Areas with < 5 restaurants`     = sum(s$number_of_restaurants < 5),
+    `Areas with ≥ 10 restaurants`    = sum(s$number_of_restaurants >= 10)
+  )
+})
+
+write_csv(comparison, "figures/step6_geography_comparison.csv")
+knitr::kable(comparison)
+```
+
+### Areas per system
+
+```{r area-tables}
+#| results: asis
+for (system in names(summaries)) {
+  cat("\n\n####", system, "— top 12 by restaurant count\n\n")
+  print(knitr::kable(
+    summaries[[system]] |>
+      slice_head(n = 12) |>
+      mutate(across(where(is.double), \(x) round(x, 2)))
+  ))
+}
+```
+
+```{r unmatched}
+# Which restaurants fall outside each system?
+imap_dfr(assigned, \(a, system) {
+  a |> st_drop_geometry() |> filter(is.na(area_name)) |>
+    transmute(system, business_name, address, postal_code)
+}) |> knitr::kable()
+```
+
+### Maps
+
+Each map shows restaurant count per area (fill) for the system, with the
+official New Orleans boundary outlined. Areas with no selected restaurants are
+left blank.
+
+```{r maps, fig.width=10, fig.height=4}
+map_one <- function(system) {
+  b <- systems[[system]] |>
+    left_join(summaries[[system]], by = "area_name") |>
+    st_filter(st_transform(new_orleans_boundary, st_crs(systems[[system]])) |> st_buffer(0.02))
+  ggplot(b) +
+    geom_sf(aes(fill = number_of_restaurants), color = "white", linewidth = 0.15) +
+    scale_fill_viridis_c(option = "D", na.value = "grey92", name = "Restaurants") +
+    labs(title = system) +
+    theme_void()
+}
+
+for (system in names(systems)) {
+  p <- map_one(system)
+  ggsave(sprintf("figures/step6_map_%s.png", str_replace_all(str_to_lower(system), "[^a-z]+", "_")),
+         p, width = 6, height = 5, dpi = 150)
+  print(p)
+}
+```
+
+```{r rating-plot, fig.width=9, fig.height=5}
+# Average business stars per area against how many restaurants back that
+# average — small areas sit at the extremes because they have few restaurants.
+ratings_vs_size <- imap_dfr(summaries, \(s, system) mutate(s, system = system))
+
+p <- ggplot(ratings_vs_size, aes(number_of_restaurants, average_business_stars)) +
+  geom_point(alpha = 0.6) +
+  facet_wrap(~ system, scales = "free_x") +
+  geom_vline(xintercept = 5, linetype = "dashed", color = "grey50") +
+  labs(x = "Restaurants in the area", y = "Average business stars",
+       title = "Area averages become unstable when an area holds only a few restaurants") +
+  theme_minimal()
+ggsave("figures/step6_stars_vs_area_size.png", p, width = 9, height = 5, dpi = 150)
+p
+```
+
+### Which geographic system, and why
+
+<!-- NURISLAM: write this section yourself. The professor's prompt is
+     "Tell me what region you are picking and why." Use the comparison table,
+     the three maps, and the stars-vs-size plot above against the decision list
+     from the assignment:
+       - do the boundaries match the question (where should someone go for
+         breakfast/coffee)?
+       - are the area names understandable to a general audience?
+       - enough restaurants per area for meaningful comparison?
+       - too large or too small?
+       - how many unmatched points?
+       - does it support useful maps?
+       - are names/definitions documented?
+     and say what your chosen boundaries reveal and what they hide. -->

@@ -1,0 +1,4 @@
+Geographic system,Areas in boundary file,Areas with ≥1 restaurant,Restaurants assigned,Unmatched restaurants,Smallest area count,Largest area count,Median area count,Areas with < 5 restaurants,Areas with ≥ 10 restaurants
+ZIP/ZCTA,67,24,575,0,1,146,6.5,9,11
+Census tract,184,103,564,11,1,117,2,75,13
+Neighborhood Statistical Area,72,54,564,11,1,119,4,28,15
