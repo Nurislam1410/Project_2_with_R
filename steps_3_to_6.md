@@ -505,16 +505,99 @@ p
 
 ### Which geographic system, and why
 
-<!-- NURISLAM: write this section yourself. The professor's prompt is
-     "Tell me what region you are picking and why." Use the comparison table,
-     the three maps, and the stars-vs-size plot above against the decision list
-     from the assignment:
-       - do the boundaries match the question (where should someone go for
-         breakfast/coffee)?
-       - are the area names understandable to a general audience?
-       - enough restaurants per area for meaningful comparison?
-       - too large or too small?
-       - how many unmatched points?
-       - does it support useful maps?
-       - are names/definitions documented?
-     and say what your chosen boundaries reveal and what they hide. -->
+*In this section, “cafes” means all 564 selected breakfast & coffee
+places inside the city (breakfast & brunch, coffee & tea, cafes, and
+bakeries).*
+
+#### Decision
+
+To compare breakfast and coffee places in New Orleans, I grouped them by
+neighborhood (Neighborhood Statistical Areas, NSAs) rather than by
+census tract or ZIP code. I did this because I wanted to divide the city
+into meaningful areas rather than create the most granular split.
+
+#### Criteria
+
+**Do the boundaries match the question?** Yes. Neighborhoods are areas
+people already treat as one place to go, while ZIP codes were drawn for
+mail delivery and census tracts for counting population. Someone looking
+for breakfast or coffee thinks of going to a neighborhood, not to a ZIP
+code or a tract.
+
+**Are the names understandable?** Yes. Labels like ZIP code 70130 or
+Census Tract 33 are meaningless to most readers, while neighborhood
+names like French Quarter are self-explanatory for most people,
+especially residents. Most people know only their own ZIP code, because
+they are asked for it on applications, but not the ZIP code of a place
+they want to visit.
+
+**Are there enough cafes per area?** Yes. Compared to census tracts and
+ZIP codes, more neighborhoods have enough cafes to compare reliably: 15
+neighborhoods have 10 or more cafes each, compared with only 11 ZIP
+areas and 13 census tracts.
+
+**Are the areas too large or too small?** Neighborhoods sit between the
+other two. ZIP areas are too large: the largest holds 146 cafes, more
+than the largest neighborhood (119), so it must blend several
+neighborhoods together, and only 24 ZIP areas contain any cafes. Census
+tracts are too small: their median is 2 cafes, and 75 of 103 tracts have
+fewer than 5.
+
+**How many points are unmatched?** 11 cafes are unmatched, but they
+aren’t a loss, because they are outside the city boundary, in suburbs
+such as Metairie and Kenner, so including them would be pointless. ZIP
+codes show 0 unmatched only because their areas extend into those
+suburbs and include these 11 cafes, so ZIP’s 0 is not a strength.
+
+**Does the system support useful maps?** Yes, because readers recognize
+neighborhood names. The ZIP map has grey areas outside the city, and the
+tract map splits the city into so many small areas that most hold only 1
+or 2 places.
+
+**Are names and definitions documented?** Yes. Neighborhood boundaries
+come from the City of New Orleans open data portal (data.nola.gov,
+dataset exvn-jeh2), and ZIP code and tract boundaries come from the US
+Census Bureau.
+
+#### Why not the others?
+
+ZIP codes are made for mail, have numerical names, and extend beyond the
+city boundary. Census tracts are made for counting people, have
+meaningless numerical names, and are too small. I also considered wards,
+but excluded them because the city’s ward map data restricts
+redistribution.
+
+#### What it reveals
+
+Counting the cafes in each neighborhood shows that the Central Business
+District has 119, the French Quarter 89, and Mid-City 31, while the
+other 51 neighborhoods have no more than 31 each and 325 combined.
+Together, these 3 neighborhoods hold 42.4% of the 564 cafes in the city.
+The CBD is the office district, so its cafes likely serve workers, and
+the French Quarter is the tourist district, so its cafes likely serve
+visitors.
+
+#### What it hides
+
+Grouping by neighborhood also hides several things. 28 neighborhoods
+have fewer than 5 cafes, 11 have 5 to 9, and 15 have 10 or more, so more
+than half of the 54 neighborhoods have unstable averages. The 11 cafes
+outside the city are excluded. There is no data on population, workers,
+or tourists, so a raw count doesn’t show demand. And differences inside
+a neighborhood are hidden, such as one busy street versus a quiet one.
+
+#### Future work
+
+Future work could use census tracts in each neighborhood to better
+understand the spread of residents, which could help determine why some
+areas have fewer cafes or why people visit cafes there less frequently.
+It could also check whether people who rated a cafe badly have reviewed
+other cafes, and whether other reviews of that cafe say the same thing,
+to verify whether the cafe is really that bad. Another step would be to
+test whether more expensive cafes, or cafes in richer neighborhoods,
+tend to be rated better, perhaps because richer neighborhoods look
+cleaner and nicer. Neighboring areas with fewer than 10 cafes could also
+be combined, and the top 2 neighborhoods could be split further, since
+they hold about 37% of all cafes. Finally, it could find the best cafes
+for group studying, quiet Zoom calls, dates, WiFi, and more food and
+drink options.
