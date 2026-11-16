@@ -1,0 +1,282 @@
+---
+title: "Breakfast & Coffee in New Orleans — Step 7: All Reviewers vs Selected Reviewers"
+format:
+  gfm:
+    toc: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+Step 7 compares ordinary Yelp averages (all reviewers) with reviewer-adjusted
+scores from reviewers who wrote enough reviews in the selected categories for a
+personal baseline to mean something. The selected restaurants, the reviews and
+the Neighborhood Statistical Areas (NSAs) are rebuilt here exactly as in
+[`steps_3_to_6.qmd`](steps_3_to_6.qmd).
+
+```{r setup}
+library(tidyverse)
+library(lubridate)
+library(sf)
+library(tigris)
+options(tigris_use_cache = TRUE)
+sf_use_s2(FALSE)
+
+restaurants <- readRDS("data/new_orleans/business_new_orleans.rds")
+reviews     <- readRDS("data/new_orleans/reviews_new_orleans.rds")
+
+selected_categories <- c("breakfast & brunch", "coffee & tea", "cafes", "bakeries")
+
+selected_ids <- restaurants |>
+  select(business_id, categories) |>
+  separate_rows(categories, sep = ",") |>
+  mutate(category = str_to_lower(str_squish(categories))) |>
+  filter(category %in% selected_categories) |>
+  distinct(business_id)
+
+selected_restaurants <- restaurants |>
+  semi_join(selected_ids, by = "business_id")
+
+# Neighborhood (NSA) for each restaurant, as chosen in Step 6
+nsa <- st_read("data/boundaries/nsa.geojson", quiet = TRUE) |>
+  transmute(area_name = gnocdc_lab)
+
+restaurant_area <- selected_restaurants |>
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326, remove = FALSE) |>
+  st_transform(st_crs(nsa)) |>
+  st_join(nsa, join = st_within, left = TRUE) |>
+  st_drop_geometry() |>
+  select(business_id, area_name)
+
+category_reviews <- reviews |>
+  semi_join(selected_restaurants, by = "business_id") |>
+  mutate(review_date = ymd_hms(date, quiet = TRUE),
+         review_year = year(review_date))
+```
+
+## All reviewers
+
+```{r all-reviewers}
+all_reviewer_summary <- category_reviews |>
+  group_by(business_id) |>
+  summarise(
+    number_of_reviews_all_reviewers = n(),
+    average_stars_all_reviewers     = mean(stars, na.rm = TRUE),
+    median_stars_all_reviewers      = median(stars, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+all_reviewer_summary |>
+  left_join(selected_restaurants |> select(business_id, business_name), by = "business_id") |>
+  arrange(desc(average_stars_all_reviewers), desc(number_of_reviews_all_reviewers)) |>
+  slice_head(n = 10) |>
+  mutate(across(where(is.double), \(x) round(x, 2))) |>
+  knitr::kable()
+```
+
+## Select reviewers with enough activity
+
+```{r activity}
+reviewer_activity <- category_reviews |>
+  count(user_id, name = "reviews_in_selected_categories")
+
+# How the threshold changes what is kept
+threshold_table <- map_dfr(c(1, 2, 3, 5, 10, 20), \(k) {
+  kept <- reviewer_activity |> filter(reviews_in_selected_categories >= k)
+  tibble(
+    threshold                     = k,
+    reviewers_retained            = nrow(kept),
+    percent_of_reviewers          = round(100 * nrow(kept) / nrow(reviewer_activity), 2),
+    reviews_retained              = sum(kept$reviews_in_selected_categories),
+    percent_of_category_reviews   = round(100 * sum(kept$reviews_in_selected_categories) / nrow(category_reviews), 2)
+  )
+})
+knitr::kable(threshold_table)
+```
+
+```{r eligible}
+activity_threshold <- 5   # Nurislam's choice: at least 5 reviews in the selected categories
+
+eligible_reviewers <- reviewer_activity |>
+  filter(reviews_in_selected_categories >= activity_threshold)
+```
+
+## Normalize each reviewer's scores
+
+```{r normalize}
+reviewer_baselines <- category_reviews |>
+  group_by(user_id) |>
+  summarise(
+    reviewer_mean         = mean(stars, na.rm = TRUE),
+    reviewer_median       = median(stars, na.rm = TRUE),
+    reviewer_review_count = n(),
+    .groups = "drop"
+  )
+
+category_reviews_adjusted <- category_reviews |>
+  left_join(reviewer_baselines, by = "user_id") |>
+  mutate(
+    normalized_mean_score   = stars - reviewer_mean,
+    normalized_median_score = stars - reviewer_median
+  )
+
+eligible_adjusted_reviews <- category_reviews_adjusted |>
+  semi_join(eligible_reviewers, by = "user_id")
+
+# How different are the two baselines?
+eligible_adjusted_reviews |>
+  summarise(
+    reviews = n(),
+    mean_of_normalized_mean_score   = round(mean(normalized_mean_score), 3),
+    mean_of_normalized_median_score = round(mean(normalized_median_score), 3),
+    share_of_median_scores_exactly_zero = round(mean(normalized_median_score == 0), 3),
+    share_of_mean_scores_exactly_zero   = round(mean(normalized_mean_score == 0), 3)
+  ) |>
+  knitr::kable()
+```
+
+## Compare raw and reviewer-adjusted results
+
+```{r restaurant-summary}
+restaurant_summary <- selected_restaurants |>
+  select(business_id, business_name, stars, latitude, longitude) |>
+  left_join(restaurant_area, by = "business_id") |>
+  left_join(all_reviewer_summary, by = "business_id") |>
+  left_join(
+    eligible_adjusted_reviews |>
+      group_by(business_id) |>
+      summarise(
+        number_of_reviews_eligible_reviewers = n(),
+        average_stars_eligible_reviewers     = mean(stars, na.rm = TRUE),
+        average_normalized_mean_score        = mean(normalized_mean_score, na.rm = TRUE),
+        average_normalized_median_score      = mean(normalized_median_score, na.rm = TRUE),
+        .groups = "drop"
+      ),
+    by = "business_id"
+  )
+
+min_eligible_reviews <- 10   # Nurislam's choice: at least 10 eligible reviews, because small samples are luck
+
+ranked <- restaurant_summary |>
+  filter(number_of_reviews_eligible_reviewers >= min_eligible_reviews) |>
+  mutate(
+    rank_raw      = min_rank(desc(average_stars_all_reviewers)),
+    rank_adjusted = min_rank(desc(average_normalized_median_score)),
+    rank_change   = rank_raw - rank_adjusted
+  )
+
+tibble(restaurants_with_enough_eligible_reviews = nrow(ranked)) |> knitr::kable()
+```
+
+### Top 10 by raw average (all reviewers)
+
+```{r top-raw}
+ranked |>
+  arrange(rank_raw, desc(number_of_reviews_all_reviewers)) |>
+  slice_head(n = 10) |>
+  select(business_name, area_name, number_of_reviews_all_reviewers, average_stars_all_reviewers,
+         number_of_reviews_eligible_reviewers, average_normalized_median_score, rank_raw, rank_adjusted) |>
+  mutate(across(where(is.double), \(x) round(x, 2))) |>
+  knitr::kable()
+```
+
+### Top 10 by reviewer-adjusted score (eligible reviewers, median baseline)
+
+```{r top-adjusted}
+ranked |>
+  arrange(rank_adjusted) |>
+  slice_head(n = 10) |>
+  select(business_name, area_name, number_of_reviews_eligible_reviewers, average_normalized_median_score,
+         average_normalized_mean_score, average_stars_all_reviewers, rank_adjusted, rank_raw) |>
+  mutate(across(where(is.double), \(x) round(x, 2))) |>
+  knitr::kable()
+```
+
+### Largest rank changes after normalization
+
+```{r rank-changes}
+ranked |>
+  arrange(desc(abs(rank_change))) |>
+  slice_head(n = 10) |>
+  select(business_name, area_name, number_of_reviews_all_reviewers, number_of_reviews_eligible_reviewers,
+         average_stars_all_reviewers, average_normalized_median_score, rank_raw, rank_adjusted, rank_change) |>
+  mutate(across(where(is.double), \(x) round(x, 2))) |>
+  knitr::kable()
+```
+
+```{r raw-vs-adjusted-plot, fig.width=8, fig.height=5}
+p <- ggplot(ranked, aes(average_stars_all_reviewers, average_normalized_median_score)) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  geom_point(aes(size = number_of_reviews_all_reviewers), alpha = 0.6) +
+  labs(title = "Raw restaurant ratings compared with reviewer-adjusted scores",
+       subtitle = paste0("Restaurants with at least ", min_eligible_reviews, " reviews from eligible reviewers"),
+       x = "Average stars from all reviewers", y = "Average normalized score (median baseline)",
+       size = "Reviews") +
+  theme_minimal()
+ggsave("figures/step7_raw_vs_adjusted.png", p, width = 8, height = 5, dpi = 150)
+p
+```
+
+## Neighborhoods: raw vs reviewer-adjusted
+
+```{r area-summary}
+area_summary <- restaurant_summary |>
+  filter(!is.na(area_name)) |>
+  group_by(area_name) |>
+  summarise(
+    restaurants                    = n(),
+    restaurants_ranked             = sum(number_of_reviews_eligible_reviewers >= min_eligible_reviews, na.rm = TRUE),
+    average_business_stars         = mean(stars, na.rm = TRUE),
+    average_stars_all_reviewers    = mean(average_stars_all_reviewers, na.rm = TRUE),
+    average_normalized_median_score  = mean(average_normalized_median_score[number_of_reviews_eligible_reviewers >= min_eligible_reviews], na.rm = TRUE),
+    total_reviews                  = sum(number_of_reviews_all_reviewers, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(rank_raw = min_rank(desc(average_stars_all_reviewers)),
+         rank_adjusted = min_rank(desc(average_normalized_median_score)))
+
+area_summary |>
+  filter(restaurants >= 10) |>
+  arrange(desc(average_normalized_median_score)) |>
+  mutate(across(where(is.double), \(x) round(x, 2))) |>
+  knitr::kable()
+```
+
+```{r area-map, fig.width=8, fig.height=6}
+nsa_map <- nsa |>
+  left_join(area_summary |> mutate(score = if_else(restaurants >= 10, average_normalized_median_score, NA_real_)),
+            by = "area_name")
+p <- ggplot(nsa_map) +
+  geom_sf(aes(fill = score), color = "white", linewidth = 0.15) +
+  scale_fill_gradient2(low = "#b2182b", mid = "grey95", high = "#2166ac", midpoint = 0,
+                       na.value = "grey85", name = "Avg normalized\nscore") +
+  labs(title = "Reviewer-adjusted breakfast & coffee scores by neighborhood",
+       subtitle = "Neighborhoods with fewer than 10 selected restaurants are grey") +
+  theme_void()
+ggsave("figures/step7_area_adjusted_map.png", p, width = 8, height = 6, dpi = 150)
+p
+```
+
+## Final map: top 10
+
+```{r top10-map, fig.width=8, fig.height=6}
+# Nurislam's choice: "best" is the reviewer-adjusted score (median baseline)
+# among restaurants with at least 10 eligible reviews.
+top10 <- ranked |> arrange(rank_adjusted) |> slice_head(n = 10) |>
+  mutate(label = paste0(row_number(), ". ", business_name))
+
+top10_sf <- top10 |> st_as_sf(coords = c("longitude", "latitude"), crs = 4326) |> st_transform(st_crs(nsa))
+bbox <- st_bbox(st_buffer(top10_sf, 0.01))
+
+p <- ggplot() +
+  geom_sf(data = nsa, fill = "grey97", color = "grey60", linewidth = 0.2) +
+  geom_sf(data = top10_sf, color = "#b2182b", size = 3) +
+  ggrepel::geom_label_repel(data = top10, aes(longitude, latitude, label = label), size = 2.6, max.overlaps = 20) +
+  coord_sf(xlim = bbox[c("xmin", "xmax")], ylim = bbox[c("ymin", "ymax")]) +
+  labs(title = "Top 10 breakfast & coffee places in New Orleans",
+       subtitle = "Ranked by reviewer-adjusted score; neighborhood boundaries shown", x = NULL, y = NULL) +
+  theme_minimal()
+ggsave("figures/step7_top10_map.png", p, width = 8, height = 6, dpi = 150)
+p
+```

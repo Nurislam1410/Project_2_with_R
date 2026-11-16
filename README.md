@@ -1,12 +1,13 @@
 # Project 2: Yelp New Orleans Restaurant Analysis
 
-MATH 167R — investigating where to find the best restaurants in a selected category in New Orleans, using the Yelp Open Dataset. (Research question, category selection, geographic choice, and visualizations are still to be done — see "Project status" below.)
+MATH 167R — investigating where to find the best restaurants in a selected category in New Orleans, using the Yelp Open Dataset. Theme: breakfast & coffee places (575 restaurants), compared across New Orleans Neighborhood Statistical Areas. See "Project status" below for what is finished and what is still in progress.
 
 ## Project status
 
 - **Steps 1-2** (import and New Orleans restaurant filter): `R/import.R`, `R/clean_filter.R`.
 - **Steps 3-6** (breakfast & coffee category selection, business-review join, spatial join to the official New Orleans boundary, comparison of geographic systems): **[`steps_3_to_6.md`](steps_3_to_6.md)** — tables and maps, rendered from `steps_3_to_6.qmd`.
-- Steps 7 and beyond are not started.
+- **Step 7** (all reviewers vs reviewers with enough activity, reviewer-normalized scores, top 10 and maps): **in progress** — computed in [`steps_7.md`](steps_7.md) with provisional settings (activity threshold 5, mean baseline, at least 5 eligible reviews to be ranked). These settings, the definition of "best", and the written interpretation are still to be decided and written.
+- **Not yet done:** the final research question and answer, the executive summary and findings, the Step 3 explanation of why the four categories belong together, and the final `AI_PROMPTS_LOG.md` (only a Claude-written draft exists in `AI_PROMPTS_LOG_DRAFT.md`).
 
 ## Data source and download instructions
 
