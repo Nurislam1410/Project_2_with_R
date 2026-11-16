@@ -6,8 +6,9 @@ MATH 167R — investigating where to find the best restaurants in a selected cat
 
 - **Steps 1-2** (import and New Orleans restaurant filter): `R/import.R`, `R/clean_filter.R`.
 - **Steps 3-6** (breakfast & coffee category selection, business-review join, spatial join to the official New Orleans boundary, comparison of geographic systems): **[`steps_3_to_6.md`](steps_3_to_6.md)** — tables and maps, rendered from `steps_3_to_6.qmd`.
-- **Step 7** (all reviewers vs reviewers with enough activity, reviewer-normalized scores, top 10 and maps): **in progress** — computed in [`steps_7.md`](steps_7.md) with provisional settings (activity threshold 5, mean baseline, at least 5 eligible reviews to be ranked). These settings, the definition of "best", and the written interpretation are still to be decided and written.
-- **Not yet done:** the final research question and answer, the executive summary and findings, the Step 3 explanation of why the four categories belong together, and the final `AI_PROMPTS_LOG.md` (only a Claude-written draft exists in `AI_PROMPTS_LOG_DRAFT.md`).
+- **Step 7** (all reviewers vs reviewers with enough activity, reviewer-normalized scores, top 10 and maps): computed in [`steps_7.md`](steps_7.md) with my settings: reviewers with at least 5 reviews in the selected categories (5 reviews proves better the authenticity of the reviewer and his or her experience), the median as each reviewer's baseline (the median better explains where the middle is), and "best" defined as the reviewer-adjusted score among restaurants with at least 10 eligible reviews (because small samples are luck).
+- **AI use:** [`AI_PROMPTS_LOG.md`](AI_PROMPTS_LOG.md).
+- **Not yet done:** the final research question and answer, the executive summary and findings, the Step 3 explanation of why the four categories belong together, and the written interpretation of the Step 7 results.
 
 ## Data source and download instructions
 
